@@ -24,6 +24,8 @@ class AlignedProgress(pl.Callback):
         ("mAP50-95", "mAP", 100.0),
         ("precision", "precision", 100.0),
         ("recall", "recall", 100.0),
+        ("ms/img", "infer_ms", 1.0),
+        ("FPS", "infer_fps", 1.0),
         ("count", "count", 1.0),
     )
 
@@ -72,10 +74,13 @@ class AlignedProgress(pl.Callback):
         )
 
         for _, key, scale in self.columns:
-            if metrics is None:
+            value = None if metrics is None else metrics.get(key)
+
+            if value is None:
                 value_text = "--"
             else:
-                value_text = f"{float(metrics[key]) * scale:.2f}%"
+                suffix = "" if key in ("infer_ms", "infer_fps") else "%"
+                value_text = f"{float(value) * scale:.2f}{suffix}"
 
             row += f" {value_text:>10}"
 
@@ -93,6 +98,20 @@ class AlignedProgress(pl.Callback):
             int(trainer.num_training_batches),
             loss=loss,
         )
+
+    def on_validation_epoch_start(self, trainer, pl_module):
+        if trainer.sanity_checking or not trainer.is_global_zero:
+            return
+
+        header = (
+            f"\n{'PHASE':<5} {'EPOCH':>7} {'BATCH':>11} "
+            f"{'PROGRESS':>10} {'LOSS':>10}"
+        )
+
+        for name, _, _ in self.columns:
+            header += f" {name:>10}"
+
+        print(header, flush=True)
 
     def on_validation_batch_end(
         self, trainer, pl_module, outputs, batch, batch_idx,
@@ -116,6 +135,15 @@ class AlignedProgress(pl.Callback):
 
         if metrics is None or pl_module.val_sample_count == 0:
             return
+
+        # 출력용 지표에 추론 속도 추가
+        metrics = dict(metrics)
+        seconds = pl_module.val_infer_seconds
+        images = pl_module.val_infer_images
+
+        if seconds > 0 and images > 0:
+            metrics["infer_ms"] = 1000.0 * seconds / images
+            metrics["infer_fps"] = images / seconds
 
         mean_loss = (
             pl_module.val_loss_sum / pl_module.val_sample_count

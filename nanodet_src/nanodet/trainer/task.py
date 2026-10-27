@@ -15,6 +15,7 @@
 import copy
 import json
 import os
+import time
 import warnings
 from typing import Any, Dict, List
 
@@ -142,7 +143,36 @@ class TrainingTask(LightningModule):
                 )
             self.logger.info(log_msg)
 
-        dets = self.model.head.post_process(preds, batch)
+        # 검증에 사용하는 모델 선택
+        infer_model = (
+            self.avg_model
+            if self.weight_averager is not None
+            else self.model
+        )
+        device = batch["img"].device
+
+        # 앞서 실행한 GPU 작업이 끝난 뒤 측정 시작
+        if device.type == "cuda":
+            torch.cuda.synchronize(device)
+
+        start = time.perf_counter()
+
+        # 보조 헤드와 loss 계산을 제외한 일반 추론
+        infer_preds = infer_model(batch["img"])
+        dets = infer_model.head.post_process(infer_preds, batch)
+
+        if device.type == "cuda":
+            torch.cuda.synchronize(device)
+
+        elapsed = time.perf_counter() - start
+
+        # 초기 준비 비용을 줄이기 위해 첫 검증 배치는 측정에서 제외
+        # 검증 배치가 하나뿐이면 해당 배치를 측정
+        total_val_batches = int(self.trainer.num_val_batches[0])
+        if batch_idx > 0 or total_val_batches == 1:
+            self.val_infer_seconds += elapsed
+            self.val_infer_images += int(batch["img"].shape[0])
+
         return dets
 
     def validation_epoch_end(self, validation_step_outputs):
@@ -167,7 +197,7 @@ class TrainingTask(LightningModule):
 
             # AlignedProgress에서 출력할 이번 epoch의 평가 결과
             self.latest_val_metrics = dict(eval_results)
-            
+
             # 조기 종료 콜백이 읽을 검증 지표 등록
             self.log(
                 "val_mAP",
@@ -342,10 +372,13 @@ class TrainingTask(LightningModule):
             self.weight_averager.update(self.model, self.global_step)
 
     def on_validation_epoch_start(self):
-        # 이번 epoch의 검증 결과 초기화
         self.latest_val_metrics = None
         self.val_loss_sum = 0.0
         self.val_sample_count = 0
+
+        # 추론 시간과 측정 이미지 수 초기화
+        self.val_infer_seconds = 0.0
+        self.val_infer_images = 0
 
         if self.weight_averager:
             self.weight_averager.apply_to(self.avg_model)
