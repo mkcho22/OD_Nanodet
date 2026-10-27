@@ -140,6 +140,16 @@ class HideBatchMessages(logging.Filter):
         return not record.getMessage().startswith(("Train|", "Val|"))
 
 
+def resolve_config_path(project_dir):
+    """Prefer the ignored per-machine config; use GPU defaults on a fresh clone."""
+    config_dir = Path(project_dir) / "configs"
+    local_config = config_dir / "nanodet-plus-m_416_can.yml"
+    if local_config.is_file():
+        return local_config
+    return config_dir / "nanodet-plus-m_416_can.gpu.yml"
+
+
+
 def main():
     # Lightning의 일반 안내 메시지 숨기기
     logging.getLogger("pytorch_lightning").setLevel(logging.WARNING)
@@ -167,7 +177,7 @@ def main():
     os.chdir(project_dir)
 
     # 설정 파일 로드
-    config_path = project_dir / "configs" / "nanodet-plus-m_416_can.yml"
+    config_path = resolve_config_path(project_dir)
     load_config(cfg, str(config_path))
 
     # 무작위 시드 고정
@@ -295,6 +305,7 @@ def main():
 
     # 학습 시작 정보 출력
     summary_rows = [
+        ["설정 파일", str(config_path.relative_to(project_dir))],
         ["모델", cfg.model.arch.name],
         ["학습 장치", device_name],
         ["PyTorch", torch.__version__],

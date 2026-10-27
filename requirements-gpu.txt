@@ -1,0 +1,22 @@
+# Remote NVIDIA GPU environment (CUDA 13.0). Run pip from the repository root.
+--extra-index-url https://download.pytorch.org/whl/cu130
+torch==2.12.1+cu130
+torchvision==0.27.1+cu130
+ml-dtypes==0.5.4
+
+numpy==1.26.4
+PyYAML==6.0.2
+pytorch-lightning==1.9.5
+torchmetrics==0.11.4
+opencv-python==4.10.0.84
+matplotlib==3.7.5
+pycocotools==2.0.8
+termcolor==2.4.0
+setuptools==69.5.1
+wheel==0.43.0
+imagesize==1.4.1
+tabulate[widechars]==0.9.0
+tensorboard==2.14.0
+
+# Register the bundled NanoDet package in this virtual environment.
+-e ./nanodet_src

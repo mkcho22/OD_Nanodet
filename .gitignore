@@ -32,3 +32,6 @@ Thumbs.db
 
 # Do not vendor an embedded Git repository
 /nanodet_src/.git/
+# Per-machine CPU/GPU configuration; tracked defaults use explicit GPU filenames.
+/requirements.txt
+/configs/nanodet-plus-m_416_can.yml
